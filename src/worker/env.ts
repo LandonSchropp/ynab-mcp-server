@@ -6,6 +6,12 @@ export interface WorkerEnv {
   YNAB_PLAN_ID?: string;
   /** Deprecated but still accepted compatibility alias; no removal date. */
   YNAB_BUDGET_ID?: string;
+  /**
+   * Cloudflare Access team domain (`<team>.cloudflareaccess.com`) and application
+   * audience tag. Setting them replaces the GitHub OAuth below.
+   */
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUD?: string;
   /** GitHub OAuth app credentials, used only to identify the caller. Required for GitHub sign-in. */
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;

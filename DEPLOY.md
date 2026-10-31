@@ -158,6 +158,39 @@ For example, to allow only Claude plus local clients:
 echo "https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback" | npx wrangler secret put ALLOWED_REDIRECT_URIS
 ```
 
+## Cloudflare Access instead of GitHub sign-in
+
+If your Cloudflare account already uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/),
+it can sign MCP clients in instead of the Worker's own GitHub OAuth. Access
+runs the OAuth flow with the client at Cloudflare's edge, so unauthenticated
+requests never reach the Worker, and the Worker verifies the signed
+`Cf-Access-Jwt-Assertion` token on every request it does get. You need no
+GitHub OAuth app and no `OAUTH_KV` namespace.
+
+1. Serve the Worker on a custom domain in a zone on your account, since Access
+   protects hostnames, and turn off its `workers.dev` address so nothing
+   reaches it around Access:
+
+   ```jsonc
+   "workers_dev": false,
+   "routes": [{ "pattern": "ynab.example.com", "custom_domain": true }],
+   ```
+
+2. In the Zero Trust dashboard, add a self-hosted Access application for that
+   hostname with an Allow policy for your own identity, and turn on
+   Managed OAuth so MCP clients can sign in through it. The Worker
+   admits anyone the policy allows, including service tokens issued for the
+   application, so the policy is the only identity check.
+3. Set `CF_ACCESS_TEAM_DOMAIN` to your team domain as a bare hostname
+   (`<team>.cloudflareaccess.com`, no `https://`) and `CF_ACCESS_AUD` to the application's
+   Audience (AUD) tag, as `vars` in `wrangler.jsonc` or as secrets. With both
+   set, the Worker answers only `/mcp`, and only with a valid Access token;
+   the GitHub sign-in, its settings and `OAUTH_KV` go unused. With only one of
+   them set, the Worker answers every request with a 500 instead of falling
+   back to GitHub sign-in.
+4. Set `YNAB_API_TOKEN` (and optionally `YNAB_PLAN_ID`) as above, deploy, and
+   add `https://ynab.example.com/mcp` as the connector.
+
 ## Categorize reminders (optional)
 
 The Worker can drop a reminder on a Google Calendar when transactions are
@@ -406,3 +439,4 @@ paths and the OAuth metadata endpoints.
 | `src/worker/autobudget/` | The auto-budget service and its MCP tools |
 | `migrations/` | D1 schema for the auto-budget service |
 | `src/worker/github-handler.ts` | GitHub sign-in and the single-user gate |
+| `src/worker/access.ts` | Cloudflare Access mode: verifies the Access token in place of the GitHub sign-in |
