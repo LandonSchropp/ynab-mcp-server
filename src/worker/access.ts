@@ -1,5 +1,6 @@
 import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
 
+import { parseAllowedRedirectUris } from "./github-handler.js";
 import { McpApiHandler } from "./mcp.js";
 import type { WorkerEnv } from "./env.js";
 
@@ -82,6 +83,12 @@ export const AccessHandler = {
     if (!teamDomain || !audience || !allowedEmail) {
       return new Response(
         "Cloudflare Access needs CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD and CF_ACCESS_ALLOWED_EMAIL",
+        { status: 500 },
+      );
+    }
+    if (parseAllowedRedirectUris(env.ALLOWED_REDIRECT_URIS)) {
+      return new Response(
+        "ALLOWED_REDIRECT_URIS has no effect with Cloudflare Access; list redirect URIs in the Access application instead",
         { status: 500 },
       );
     }

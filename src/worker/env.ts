@@ -23,7 +23,7 @@ export interface WorkerEnv {
   /**
    * Optional exact OAuth redirect URIs, separated by commas or whitespace, that
    * MCP clients may receive grants at. http loopback redirects are always
-   * allowed. May be a plain var or a secret.
+   * allowed. May be a plain var or a secret. GitHub sign-in only.
    */
   ALLOWED_REDIRECT_URIS?: string;
   /** Set to "true" to omit tools that write to YNAB. */

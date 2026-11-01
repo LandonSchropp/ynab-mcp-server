@@ -172,6 +172,24 @@ describe("worker.fetch", () => {
       });
     });
 
+    describe("when ALLOWED_REDIRECT_URIS is set", () => {
+      it("responds with a 500 status", async () => {
+        const response = await call("/mcp", await token(), {
+          ALLOWED_REDIRECT_URIS: "https://claude.ai/api/mcp/auth_callback",
+        });
+        expect(response.status).toBe(500);
+      });
+    });
+
+    describe("when ALLOWED_REDIRECT_URIS is blank", () => {
+      it("serves /mcp", async () => {
+        const response = await call("/mcp", await token(), {
+          ALLOWED_REDIRECT_URIS: " ",
+        });
+        expect(response.status).toBe(200);
+      });
+    });
+
     describe("when the request has no Access token", () => {
       it("responds with a 401 status", async () => {
         expect((await call("/mcp")).status).toBe(401);
