@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, it, expect, vi } from "vitest";
-import { SignJWT, exportJWK, generateKeyPair, type CryptoKey } from "jose";
+import {
+  SignJWT,
+  exportJWK,
+  generateKeyPair,
+  type CryptoKey,
+  type JWTPayload,
+} from "jose";
 
 import worker from "../worker/index.js";
 
@@ -9,11 +15,13 @@ import type { WorkerEnv } from "../worker/env.js";
 
 const TEAM_DOMAIN = "team.cloudflareaccess.com";
 const AUD = "test-aud";
+const OWNER_EMAIL = "owner@example.com";
 
 const env: WorkerEnv = {
   YNAB_API_TOKEN: "test-token",
   CF_ACCESS_TEAM_DOMAIN: TEAM_DOMAIN,
   CF_ACCESS_AUD: AUD,
+  CF_ACCESS_ALLOWED_EMAIL: OWNER_EMAIL,
 };
 
 let privateKey: CryptoKey;
@@ -52,9 +60,15 @@ afterAll(() => {
 });
 
 function token(
-  overrides: { aud?: string; iss?: string; exp?: string; key?: CryptoKey } = {},
+  overrides: {
+    claims?: JWTPayload;
+    aud?: string;
+    iss?: string;
+    exp?: string;
+    key?: CryptoKey;
+  } = {},
 ) {
-  return new SignJWT({ email: "someone@example.com" })
+  return new SignJWT(overrides.claims ?? { email: OWNER_EMAIL })
     .setProtectedHeader({ alg: "RS256", kid: "key-1" })
     .setIssuer(overrides.iss ?? `https://${TEAM_DOMAIN}`)
     .setAudience(overrides.aud ?? AUD)
@@ -128,6 +142,36 @@ describe("worker.fetch", () => {
       );
     });
 
+    describe("when the token's email differs from the allowed one only in case", () => {
+      it("serves /mcp", async () => {
+        const response = await call(
+          "/mcp",
+          await token({ claims: { email: "Owner@Example.com" } }),
+        );
+        expect(response.status).toBe(200);
+      });
+    });
+
+    describe("when the token belongs to another email", () => {
+      it("responds with a 403 status", async () => {
+        const response = await call(
+          "/mcp",
+          await token({ claims: { email: "someone@example.com" } }),
+        );
+        expect(response.status).toBe(403);
+      });
+    });
+
+    describe("when the token is a service token", () => {
+      it("responds with a 403 status", async () => {
+        const response = await call(
+          "/mcp",
+          await token({ claims: { common_name: "service.access", sub: "" } }),
+        );
+        expect(response.status).toBe(403);
+      });
+    });
+
     describe("when the request has no Access token", () => {
       it("responds with a 401 status", async () => {
         expect((await call("/mcp")).status).toBe(401);
@@ -199,10 +243,24 @@ describe("worker.fetch", () => {
     });
   });
 
-  describe("when only one Access setting is present", () => {
+  describe("when only some Access settings are present", () => {
     it.each([
-      ["CF_ACCESS_TEAM_DOMAIN", { CF_ACCESS_AUD: undefined }],
-      ["CF_ACCESS_AUD", { CF_ACCESS_TEAM_DOMAIN: undefined }],
+      [
+        "CF_ACCESS_TEAM_DOMAIN",
+        { CF_ACCESS_AUD: undefined, CF_ACCESS_ALLOWED_EMAIL: undefined },
+      ],
+      [
+        "CF_ACCESS_AUD",
+        { CF_ACCESS_TEAM_DOMAIN: undefined, CF_ACCESS_ALLOWED_EMAIL: undefined },
+      ],
+      [
+        "CF_ACCESS_ALLOWED_EMAIL",
+        { CF_ACCESS_TEAM_DOMAIN: undefined, CF_ACCESS_AUD: undefined },
+      ],
+      [
+        "CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD",
+        { CF_ACCESS_ALLOWED_EMAIL: undefined },
+      ],
     ])(
       "responds with a 500 status when only %s is set",
       async (_name, overrides) => {
@@ -217,6 +275,7 @@ describe("worker.fetch", () => {
       const response = await call("/mcp", await token(), {
         CF_ACCESS_TEAM_DOMAIN: undefined,
         CF_ACCESS_AUD: undefined,
+        CF_ACCESS_ALLOWED_EMAIL: undefined,
         OAUTH_KV: {} as KVNamespace,
       });
       expect(response.headers.get("www-authenticate")).toContain("Bearer");

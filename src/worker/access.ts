@@ -1,11 +1,15 @@
-import { createRemoteJWKSet, errors, jwtVerify } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
 
 import { McpApiHandler } from "./mcp.js";
 import type { WorkerEnv } from "./env.js";
 
-/** True when either Access setting is present, so a half-configured Worker never falls back to GitHub OAuth. */
+/** True when any Access setting is present. */
 export function usesAccess(env: WorkerEnv): boolean {
-  return Boolean(env.CF_ACCESS_TEAM_DOMAIN || env.CF_ACCESS_AUD);
+  return Boolean(
+    env.CF_ACCESS_TEAM_DOMAIN ||
+      env.CF_ACCESS_AUD ||
+      env.CF_ACCESS_ALLOWED_EMAIL,
+  );
 }
 
 let keys:
@@ -31,45 +35,65 @@ const REJECTED_TOKEN_ERRORS = [
   errors.JWKSNoMatchingKey,
 ];
 
-async function isAuthorized(
+/** The claims of the request's Access token, or undefined when it has no valid one. */
+async function verifiedClaims(
   request: Request,
   teamDomain: string,
   audience: string,
-): Promise<boolean> {
+): Promise<JWTPayload | undefined> {
   const assertion = request.headers.get("cf-access-jwt-assertion");
-  if (!assertion) return false;
+  if (!assertion) return undefined;
 
   const issuer = `https://${teamDomain}`;
   try {
-    await jwtVerify(assertion, keySet(issuer), {
+    const { payload } = await jwtVerify(assertion, keySet(issuer), {
       issuer,
       audience,
       algorithms: ["RS256"],
     });
-    return true;
+    return payload;
   } catch (error) {
     if (!REJECTED_TOKEN_ERRORS.some((type) => error instanceof type)) {
       console.error("access: could not verify token:", error);
     }
-    return false;
+    return undefined;
   }
 }
 
-/** Serves /mcp to requests carrying a valid Access token: 404 elsewhere, 401 without one. */
+/** True when the token's email matches `allowedEmail`, ignoring case. */
+function isOwner(claims: JWTPayload, allowedEmail: string): boolean {
+  return (
+    typeof claims.email === "string" &&
+    claims.email.toLowerCase() === allowedEmail.toLowerCase()
+  );
+}
+
+/**
+ * Serves /mcp to the owner's valid Access token: 404 elsewhere, 401 without a
+ * valid token, 403 for anyone else's.
+ */
 export const AccessHandler = {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
-    const { CF_ACCESS_TEAM_DOMAIN: teamDomain, CF_ACCESS_AUD: audience } = env;
-    if (!teamDomain || !audience) {
+    const {
+      CF_ACCESS_TEAM_DOMAIN: teamDomain,
+      CF_ACCESS_AUD: audience,
+      CF_ACCESS_ALLOWED_EMAIL: allowedEmail,
+    } = env;
+    if (!teamDomain || !audience || !allowedEmail) {
       return new Response(
-        "Cloudflare Access needs both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD",
+        "Cloudflare Access needs CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD and CF_ACCESS_ALLOWED_EMAIL",
         { status: 500 },
       );
     }
     if (new URL(request.url).pathname !== "/mcp") {
       return new Response("Not found", { status: 404 });
     }
-    if (!(await isAuthorized(request, teamDomain, audience))) {
+    const claims = await verifiedClaims(request, teamDomain, audience);
+    if (!claims) {
       return new Response("Unauthorized", { status: 401 });
+    }
+    if (!isOwner(claims, allowedEmail)) {
+      return new Response("Forbidden", { status: 403 });
     }
     return McpApiHandler.fetch(request, env);
   },

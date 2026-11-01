@@ -8,10 +8,13 @@ export interface WorkerEnv {
   YNAB_BUDGET_ID?: string;
   /**
    * Cloudflare Access team domain (`<team>.cloudflareaccess.com`) and application
-   * audience tag. Setting them replaces the GitHub OAuth below.
+   * audience tag. Setting any `CF_ACCESS_*` value replaces the GitHub OAuth
+   * below, and Access mode needs these two plus `CF_ACCESS_ALLOWED_EMAIL`.
    */
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
+  /** The single email allowed to use this server. Required in Access mode. */
+  CF_ACCESS_ALLOWED_EMAIL?: string;
   /** GitHub OAuth app credentials, used only to identify the caller. Required for GitHub sign-in. */
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
