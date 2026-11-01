@@ -6,11 +6,11 @@ export interface WorkerEnv {
   YNAB_PLAN_ID?: string;
   /** Deprecated but still accepted compatibility alias; no removal date. */
   YNAB_BUDGET_ID?: string;
-  /** GitHub OAuth app credentials, used only to identify the caller. */
-  GITHUB_CLIENT_ID: string;
-  GITHUB_CLIENT_SECRET: string;
-  /** The single GitHub login allowed to use this server. */
-  ALLOWED_GITHUB_LOGIN: string;
+  /** GitHub OAuth app credentials, used only to identify the caller. Required for GitHub sign-in. */
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  /** The single GitHub login allowed to use this server. Required for GitHub sign-in. */
+  ALLOWED_GITHUB_LOGIN?: string;
   /**
    * Optional exact OAuth redirect URIs, separated by commas or whitespace, that
    * MCP clients may receive grants at. http loopback redirects are always
